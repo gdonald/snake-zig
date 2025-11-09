@@ -42,6 +42,24 @@ pub const Game = struct {
         if (self.state != .Playing) return;
 
         self.tick_counter += 1;
+
+        try self.snake_instance.move(self.grid_width, self.grid_height);
+
+        if (self.snake_instance.checkSelfCollision()) {
+            self.state = .GameOver;
+            return;
+        }
+
+        const head = self.snake_instance.body.items[0];
+        if (head.x == self.food_position.x and head.y == self.food_position.y) {
+            self.snake_instance.grow();
+            self.score += 10;
+            try self.spawnFood();
+        }
+    }
+
+    pub fn changeDirection(self: *Game, direction: types.Direction) void {
+        self.snake_instance.changeDirection(direction);
     }
 
     pub fn spawnFood(self: *Game) !void {
