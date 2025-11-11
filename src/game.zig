@@ -1,6 +1,7 @@
 const std = @import("std");
 const types = @import("types.zig");
 const snake = @import("snake.zig");
+const config = @import("config.zig");
 
 pub const Game = struct {
     snake_instance: snake.Snake,
@@ -45,21 +46,40 @@ pub const Game = struct {
 
         try self.snake_instance.move(self.grid_width, self.grid_height);
 
+        const head = self.snake_instance.body.items[0];
+
+        if (config.USE_WALLS and head.isOutOfBounds(self.grid_width, self.grid_height)) {
+            self.state = .GameOver;
+            return;
+        }
+
         if (self.snake_instance.checkSelfCollision()) {
             self.state = .GameOver;
             return;
         }
 
-        const head = self.snake_instance.body.items[0];
         if (head.x == self.food_position.x and head.y == self.food_position.y) {
             self.snake_instance.grow();
-            self.score += 10;
+            self.score += config.BASE_POINTS_PER_FOOD;
             try self.spawnFood();
         }
     }
 
     pub fn changeDirection(self: *Game, direction: types.Direction) void {
         self.snake_instance.changeDirection(direction);
+    }
+
+    pub fn togglePause(self: *Game) void {
+        if (self.state == .Playing) {
+            self.state = .Paused;
+        } else if (self.state == .Paused) {
+            self.state = .Playing;
+        }
+    }
+
+    pub fn getCurrentSpeed(self: *Game) u64 {
+        const speed_level = self.score / config.SPEED_INCREASE_INTERVAL;
+        return config.INITIAL_TICK_RATE + speed_level;
     }
 
     pub fn spawnFood(self: *Game) !void {

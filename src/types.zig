@@ -28,6 +28,10 @@ pub const Position = struct {
         }
         return new_pos;
     }
+
+    pub fn isOutOfBounds(self: Position, grid_width: u32, grid_height: u32) bool {
+        return self.x >= grid_width or self.y >= grid_height;
+    }
 };
 
 pub const Direction = enum {
