@@ -8,8 +8,8 @@ pub const Snake = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, start_x: u32, start_y: u32) !Snake {
-        var body = std.ArrayList(types.Position).init(allocator);
-        try body.append(types.Position{ .x = start_x, .y = start_y });
+        var body = try std.ArrayList(types.Position).initCapacity(allocator, 1);
+        try body.append(allocator, types.Position{ .x = start_x, .y = start_y });
 
         return Snake{
             .body = body,
@@ -20,14 +20,14 @@ pub const Snake = struct {
     }
 
     pub fn deinit(self: *Snake) void {
-        self.body.deinit();
+        self.body.deinit(self.allocator);
     }
 
     pub fn move(self: *Snake, grid_width: u32, grid_height: u32) !void {
         const head = self.body.items[0];
         const new_head = head.moveInDirection(self.direction, grid_width, grid_height);
 
-        try self.body.insert(0, new_head);
+        try self.body.insert(self.allocator, 0, new_head);
 
         if (self.growth_pending > 0) {
             self.growth_pending -= 1;
