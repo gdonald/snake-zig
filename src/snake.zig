@@ -8,8 +8,14 @@ pub const Snake = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, start_x: u32, start_y: u32) !Snake {
-        var body = try std.ArrayList(types.Position).initCapacity(allocator, 1);
+        var body = try std.ArrayList(types.Position).initCapacity(allocator, 3);
         try body.append(allocator, types.Position{ .x = start_x, .y = start_y });
+        if (start_x >= 1) {
+            try body.append(allocator, types.Position{ .x = start_x - 1, .y = start_y });
+        }
+        if (start_x >= 2) {
+            try body.append(allocator, types.Position{ .x = start_x - 2, .y = start_y });
+        }
 
         return Snake{
             .body = body,
@@ -57,6 +63,17 @@ pub const Snake = struct {
             }
         }
         return false;
+    }
+
+    pub fn canChangeDirection(self: *Snake, new_direction: types.Direction) bool {
+        const opposite = switch (self.direction) {
+            .Up => types.Direction.Down,
+            .Down => types.Direction.Up,
+            .Left => types.Direction.Right,
+            .Right => types.Direction.Left,
+        };
+
+        return new_direction != opposite;
     }
 
     pub fn changeDirection(self: *Snake, new_direction: types.Direction) void {

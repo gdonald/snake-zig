@@ -24,32 +24,48 @@ pub fn main() !void {
     try loop.start();
     defer loop.stop();
 
-    var game_instance = try game.Game.init(allocator, config.GRID_WIDTH, config.GRID_HEIGHT);
+    try vx.queryTerminalSend(tty.writer());
+    const initial_winsize = loop.nextEvent();
+    const winsize: vaxis.Winsize = switch (initial_winsize) {
+        .winsize => |ws| blk: {
+            try vx.resize(allocator, tty.writer(), ws);
+            break :blk ws;
+        },
+        else => .{ .rows = 24, .cols = 80, .x_pixel = 0, .y_pixel = 0 },
+    };
+
+    const grid_height = if (winsize.rows > 2) winsize.rows - 2 else 20;
+    const grid_width = if (winsize.cols > 2) winsize.cols - 2 else 40;
+
+    var game_instance = try game.Game.init(allocator, grid_width, grid_height);
     defer game_instance.deinit();
-    try game_instance.spawnFood();
 
     var last_tick_ns: i128 = std.time.nanoTimestamp();
-    const tick_interval_ns: i128 = 100_000_000;
+    const tick_interval_ns: i128 = 150_000_000;
 
     while (true) {
-        const event = loop.nextEvent();
-        switch (event) {
-            .key_press => |key| {
-                if (key.matches('q', .{}) or key.matches('c', .{ .ctrl = true })) {
-                    break;
-                }
+        while (loop.tryEvent()) |event| {
+            switch (event) {
+                .key_press => |key| {
+                    if (key.matches('q', .{}) or key.matches('c', .{ .ctrl = true })) {
+                        return;
+                    }
 
-                if (game_instance.state == .GameOver) {
-                    if (key.matches('r', .{})) {
+                    if (key.matches('n', .{})) {
                         try game_instance.reset();
                         last_tick_ns = std.time.nanoTimestamp();
                     }
-                } else {
-                    if (key.matches('p', .{}) or key.matches(' ', .{})) {
-                        game_instance.togglePause();
-                    }
 
-                    if (game_instance.state == .Playing) {
+                    if (game_instance.state == .GameOver) {
+                        if (key.matches('r', .{})) {
+                            try game_instance.reset();
+                            last_tick_ns = std.time.nanoTimestamp();
+                        }
+                    } else {
+                        if (key.matches('p', .{}) or key.matches(' ', .{})) {
+                            game_instance.togglePause();
+                        }
+
                         if (key.matches(vaxis.Key.up, .{}) or key.matches('w', .{})) {
                             game_instance.changeDirection(.Up);
                         } else if (key.matches(vaxis.Key.down, .{}) or key.matches('s', .{})) {
@@ -59,17 +75,23 @@ pub fn main() !void {
                         } else if (key.matches(vaxis.Key.right, .{}) or key.matches('d', .{})) {
                             game_instance.changeDirection(.Right);
                         }
-                    }
 
-                    if (key.matches('r', .{})) {
-                        try game_instance.reset();
-                        last_tick_ns = std.time.nanoTimestamp();
+                        if (key.matches('r', .{})) {
+                            try game_instance.reset();
+                            last_tick_ns = std.time.nanoTimestamp();
+                        }
                     }
-                }
-            },
-            .winsize => |ws| {
-                try vx.resize(allocator, tty.writer(), ws);
-            },
+                },
+                .winsize => |ws| {
+                    try vx.resize(allocator, tty.writer(), ws);
+                    const new_grid_height = if (ws.rows > 2) ws.rows - 2 else 20;
+                    const new_grid_width = if (ws.cols > 2) ws.cols - 2 else 40;
+                    if (new_grid_width != game_instance.grid_width or new_grid_height != game_instance.grid_height) {
+                        game_instance.deinit();
+                        game_instance = try game.Game.init(allocator, new_grid_width, new_grid_height);
+                    }
+                },
+            }
         }
 
         const current_time = std.time.nanoTimestamp();
@@ -84,51 +106,61 @@ pub fn main() !void {
         try renderGame(win, &game_instance);
 
         try vx.render(tty.writer());
+
+        std.Thread.sleep(8_000_000);
     }
 }
 
 fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
-    const border_offset_x: u16 = 2;
-    const border_offset_y: u16 = 2;
+    const border_offset_x: u16 = 0;
+    const border_offset_y: u16 = 0;
+    const grid_width = @as(u16, @intCast(game_instance.grid_width));
+    const grid_height = @as(u16, @intCast(game_instance.grid_height));
 
     const border_style = vaxis.Style{
         .fg = .{ .rgb = [_]u8{ 150, 150, 150 } },
     };
 
     var i: u16 = 0;
-    while (i < config.GRID_WIDTH + 2) : (i += 1) {
+    while (i < grid_width + 2) : (i += 1) {
         const top_seg = vaxis.Segment{ .text = "#", .style = border_style };
         const bottom_seg = vaxis.Segment{ .text = "#", .style = border_style };
         _ = win.printSegment(top_seg, .{ .col_offset = border_offset_x + i, .row_offset = border_offset_y });
-        _ = win.printSegment(bottom_seg, .{ .col_offset = border_offset_x + i, .row_offset = border_offset_y + config.GRID_HEIGHT + 1 });
+        _ = win.printSegment(bottom_seg, .{ .col_offset = border_offset_x + i, .row_offset = border_offset_y + grid_height + 1 });
     }
 
     i = 0;
-    while (i < config.GRID_HEIGHT + 2) : (i += 1) {
+    while (i < grid_height + 2) : (i += 1) {
         const left_seg = vaxis.Segment{ .text = "#", .style = border_style };
         const right_seg = vaxis.Segment{ .text = "#", .style = border_style };
         _ = win.printSegment(left_seg, .{ .col_offset = border_offset_x, .row_offset = border_offset_y + i });
-        _ = win.printSegment(right_seg, .{ .col_offset = border_offset_x + config.GRID_WIDTH + 1, .row_offset = border_offset_y + i });
+        _ = win.printSegment(right_seg, .{ .col_offset = border_offset_x + grid_width + 1, .row_offset = border_offset_y + i });
     }
 
     var y: u32 = 0;
-    while (y < config.GRID_HEIGHT) : (y += 1) {
+    while (y < game_instance.grid_height) : (y += 1) {
         var x: u32 = 0;
-        while (x < config.GRID_WIDTH) : (x += 1) {
+        while (x < game_instance.grid_width) : (x += 1) {
             const pos = types.Position{ .x = x, .y = y };
             const col: u16 = border_offset_x + 1 + @as(u16, @intCast(x));
             const row: u16 = border_offset_y + 1 + @as(u16, @intCast(y));
 
             if (game_instance.snake_instance.contains(pos)) {
                 const head = game_instance.snake_instance.body.items[0];
-                const char = if (pos.x == head.x and pos.y == head.y)
+                const is_head = pos.x == head.x and pos.y == head.y;
+                const char = if (is_head)
                     &[_]u8{config.SNAKE_HEAD_CHAR}
                 else
                     &[_]u8{config.SNAKE_BODY_CHAR};
 
+                const color: [3]u8 = if (is_head and game_instance.food_collected_flash > 0)
+                    [_]u8{ 255, 255, 0 }
+                else
+                    [_]u8{ 0, 255, 0 };
+
                 const seg = vaxis.Segment{
                     .text = char,
-                    .style = .{ .fg = .{ .rgb = [_]u8{ 0, 255, 0 } } },
+                    .style = .{ .fg = .{ .rgb = color } },
                 };
                 _ = win.printSegment(seg, .{ .col_offset = col, .row_offset = row });
             } else if (pos.x == game_instance.food_position.x and pos.y == game_instance.food_position.y) {
@@ -143,11 +175,15 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
 
     var score_buf: [100]u8 = undefined;
     const score_text = try std.fmt.bufPrint(&score_buf, "Score: {d}", .{game_instance.score});
+    const score_color: [3]u8 = if (game_instance.food_collected_flash > 0)
+        [_]u8{ 255, 255, 0 }
+    else
+        [_]u8{ 255, 255, 255 };
     const score_seg = vaxis.Segment{
         .text = score_text,
-        .style = .{ .fg = .{ .rgb = [_]u8{ 255, 255, 255 } } },
+        .style = .{ .fg = .{ .rgb = score_color } },
     };
-    _ = win.printSegment(score_seg, .{ .col_offset = border_offset_x, .row_offset = border_offset_y + config.GRID_HEIGHT + 3 });
+    _ = win.printSegment(score_seg, .{ .col_offset = border_offset_x, .row_offset = border_offset_y + grid_height + 3 });
 
     var speed_buf: [100]u8 = undefined;
     const speed = game_instance.getCurrentSpeed();
@@ -156,19 +192,44 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
         .text = speed_text,
         .style = .{ .fg = .{ .rgb = [_]u8{ 255, 255, 255 } } },
     };
-    _ = win.printSegment(speed_seg, .{ .col_offset = border_offset_x + 15, .row_offset = border_offset_y + config.GRID_HEIGHT + 3 });
+    _ = win.printSegment(speed_seg, .{ .col_offset = border_offset_x + 15, .row_offset = border_offset_y + grid_height + 3 });
 
-    const controls_text = "Controls: Arrows/WASD=Move | P/Space=Pause | R=Restart | Q=Quit";
+    var high_score_buf: [100]u8 = undefined;
+    const high_score_text = try std.fmt.bufPrint(&high_score_buf, "High Score: {d}", .{game_instance.high_score});
+    const high_score_seg = vaxis.Segment{
+        .text = high_score_text,
+        .style = .{ .fg = .{ .rgb = [_]u8{ 255, 215, 0 } } },
+    };
+    _ = win.printSegment(high_score_seg, .{ .col_offset = border_offset_x + 28, .row_offset = border_offset_y + grid_height + 3 });
+
+    const controls_text = "Controls: Arrows/WASD=Move | P/Space=Pause | R/N=Restart | Q=Quit";
     const controls_seg = vaxis.Segment{
         .text = controls_text,
         .style = .{ .fg = .{ .rgb = [_]u8{ 200, 200, 200 } } },
     };
-    _ = win.printSegment(controls_seg, .{ .col_offset = border_offset_x, .row_offset = border_offset_y + config.GRID_HEIGHT + 4 });
+    _ = win.printSegment(controls_seg, .{ .col_offset = border_offset_x, .row_offset = border_offset_y + grid_height + 4 });
+
+    if (game_instance.state == .Countdown) {
+        if (game_instance.getCountdownValue()) |countdown| {
+            const overlay_y: u16 = border_offset_y + grid_height / 2;
+            var countdown_buf: [20]u8 = undefined;
+            const countdown_text = if (countdown > 0)
+                try std.fmt.bufPrint(&countdown_buf, "{d}", .{countdown})
+            else
+                "GO!";
+            const countdown_col: u16 = border_offset_x + (grid_width / 2) -| @as(u16, @intCast(countdown_text.len / 2));
+            const countdown_seg = vaxis.Segment{
+                .text = countdown_text,
+                .style = .{ .fg = .{ .rgb = [_]u8{ 255, 255, 0 } } },
+            };
+            _ = win.printSegment(countdown_seg, .{ .col_offset = countdown_col, .row_offset = overlay_y });
+        }
+    }
 
     if (game_instance.state == .Paused) {
-        const overlay_y: u16 = border_offset_y + @as(u16, @intCast(config.GRID_HEIGHT / 2));
+        const overlay_y: u16 = border_offset_y + grid_height / 2;
         const pause_text = "PAUSED";
-        const pause_col: u16 = border_offset_x + @as(u16, @intCast(config.GRID_WIDTH / 2)) -| @as(u16, @intCast(pause_text.len / 2));
+        const pause_col: u16 = border_offset_x + (grid_width / 2) -| @as(u16, @intCast(pause_text.len / 2));
         const pause_seg = vaxis.Segment{
             .text = pause_text,
             .style = .{ .fg = .{ .rgb = [_]u8{ 255, 255, 0 } } },
@@ -176,7 +237,7 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
         _ = win.printSegment(pause_seg, .{ .col_offset = pause_col, .row_offset = overlay_y });
 
         const resume_text = "Press P or Space to resume";
-        const resume_col: u16 = border_offset_x + @as(u16, @intCast(config.GRID_WIDTH / 2)) -| @as(u16, @intCast(resume_text.len / 2));
+        const resume_col: u16 = border_offset_x + (grid_width / 2) -| @as(u16, @intCast(resume_text.len / 2));
         const resume_seg = vaxis.Segment{
             .text = resume_text,
             .style = .{ .fg = .{ .rgb = [_]u8{ 200, 200, 200 } } },
@@ -185,9 +246,9 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
     }
 
     if (game_instance.state == .GameOver) {
-        const overlay_y: u16 = border_offset_y + @as(u16, @intCast(config.GRID_HEIGHT / 2));
+        const overlay_y: u16 = border_offset_y + grid_height / 2;
         const gameover_text = "GAME OVER";
-        const gameover_col: u16 = border_offset_x + @as(u16, @intCast(config.GRID_WIDTH / 2)) -| @as(u16, @intCast(gameover_text.len / 2));
+        const gameover_col: u16 = border_offset_x + (grid_width / 2) -| @as(u16, @intCast(gameover_text.len / 2));
         const gameover_seg = vaxis.Segment{
             .text = gameover_text,
             .style = .{ .fg = .{ .rgb = [_]u8{ 255, 0, 0 } } },
@@ -196,7 +257,7 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
 
         var final_score_buf: [100]u8 = undefined;
         const final_score_text = try std.fmt.bufPrint(&final_score_buf, "Final Score: {d}", .{game_instance.score});
-        const final_score_col: u16 = border_offset_x + @as(u16, @intCast(config.GRID_WIDTH / 2)) -| @as(u16, @intCast(final_score_text.len / 2));
+        const final_score_col: u16 = border_offset_x + (grid_width / 2) -| @as(u16, @intCast(final_score_text.len / 2));
         const final_score_seg = vaxis.Segment{
             .text = final_score_text,
             .style = .{ .fg = .{ .rgb = [_]u8{ 255, 255, 255 } } },
@@ -204,7 +265,7 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
         _ = win.printSegment(final_score_seg, .{ .col_offset = final_score_col, .row_offset = overlay_y + 1 });
 
         const restart_text = "Press R to restart or Q to quit";
-        const restart_col: u16 = border_offset_x + @as(u16, @intCast(config.GRID_WIDTH / 2)) -| @as(u16, @intCast(restart_text.len / 2));
+        const restart_col: u16 = border_offset_x + (grid_width / 2) -| @as(u16, @intCast(restart_text.len / 2));
         const restart_seg = vaxis.Segment{
             .text = restart_text,
             .style = .{ .fg = .{ .rgb = [_]u8{ 200, 200, 200 } } },
