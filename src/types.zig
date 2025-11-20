@@ -4,28 +4,36 @@ pub const Position = struct {
     x: u32,
     y: u32,
 
-    pub fn moveInDirection(self: Position, direction: Direction, _: u32, _: u32) Position {
+    pub fn moveInDirection(self: Position, direction: Direction, grid_width: u32, grid_height: u32, wrap: bool) Position {
         var new_pos = self;
         switch (direction) {
             .Up => {
-                if (self.y == 0) {
-                    new_pos.y = std.math.maxInt(u32);
+                if (wrap) {
+                    new_pos.y = (self.y + grid_height - 1) % grid_height;
                 } else {
-                    new_pos.y -= 1;
+                    new_pos.y = if (self.y == 0) std.math.maxInt(u32) else self.y - 1;
                 }
             },
             .Down => {
-                new_pos.y = self.y + 1;
+                if (wrap) {
+                    new_pos.y = (self.y + 1) % grid_height;
+                } else {
+                    new_pos.y = self.y + 1;
+                }
             },
             .Left => {
-                if (self.x == 0) {
-                    new_pos.x = std.math.maxInt(u32);
+                if (wrap) {
+                    new_pos.x = (self.x + grid_width - 1) % grid_width;
                 } else {
-                    new_pos.x -= 1;
+                    new_pos.x = if (self.x == 0) std.math.maxInt(u32) else self.x - 1;
                 }
             },
             .Right => {
-                new_pos.x = self.x + 1;
+                if (wrap) {
+                    new_pos.x = (self.x + 1) % grid_width;
+                } else {
+                    new_pos.x = self.x + 1;
+                }
             },
         }
         return new_pos;

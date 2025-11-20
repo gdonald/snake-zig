@@ -4,6 +4,29 @@ const game = @import("game.zig");
 const types = @import("types.zig");
 const config = @import("config.zig");
 
+pub const std_options: std.Options = .{
+    // Silence vaxis info logs (e.g., kitty capability detection) so they never hit the TUI.
+    .log_level = .err,
+    .log_scope_levels = &[_]std.log.ScopeLevel{
+        .{ .scope = .vaxis, .level = .err },
+    },
+    .logFn = ignoredLogFn,
+};
+
+fn ignoredLogFn(comptime _: std.log.Level, comptime _: @Type(.enum_literal), comptime _: []const u8, _: anytype) void {}
+
+const grid_vertical_padding: u16 = 5; // top/bottom border + UI rows
+const grid_horizontal_padding: u16 = 2; // left/right border
+
+fn calculateGridSize(ws: vaxis.Winsize) struct { width: u32, height: u32 } {
+    const height = if (ws.rows > grid_vertical_padding) ws.rows - grid_vertical_padding else 1;
+    const width = if (ws.cols > grid_horizontal_padding) ws.cols - grid_horizontal_padding else 1;
+    return .{
+        .width = @as(u32, @intCast(width)),
+        .height = @as(u32, @intCast(height)),
+    };
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -34,8 +57,9 @@ pub fn main() !void {
         else => .{ .rows = 24, .cols = 80, .x_pixel = 0, .y_pixel = 0 },
     };
 
-    const grid_height = if (winsize.rows > 2) winsize.rows - 2 else 20;
-    const grid_width = if (winsize.cols > 2) winsize.cols - 2 else 40;
+    const initial_grid = calculateGridSize(winsize);
+    const grid_width = initial_grid.width;
+    const grid_height = initial_grid.height;
 
     var game_instance = try game.Game.init(allocator, grid_width, grid_height);
     defer game_instance.deinit();
@@ -84,11 +108,10 @@ pub fn main() !void {
                 },
                 .winsize => |ws| {
                     try vx.resize(allocator, tty.writer(), ws);
-                    const new_grid_height = if (ws.rows > 2) ws.rows - 2 else 20;
-                    const new_grid_width = if (ws.cols > 2) ws.cols - 2 else 40;
-                    if (new_grid_width != game_instance.grid_width or new_grid_height != game_instance.grid_height) {
+                    const new_grid = calculateGridSize(ws);
+                    if (new_grid.width != game_instance.grid_width or new_grid.height != game_instance.grid_height) {
                         game_instance.deinit();
-                        game_instance = try game.Game.init(allocator, new_grid_width, new_grid_height);
+                        game_instance = try game.Game.init(allocator, new_grid.width, new_grid.height);
                     }
                 },
             }

@@ -29,9 +29,9 @@ pub const Snake = struct {
         self.body.deinit(self.allocator);
     }
 
-    pub fn move(self: *Snake, grid_width: u32, grid_height: u32) !void {
+    pub fn move(self: *Snake, grid_width: u32, grid_height: u32, wrap: bool) !void {
         const head = self.body.items[0];
-        const new_head = head.moveInDirection(self.direction, grid_width, grid_height);
+        const new_head = head.moveInDirection(self.direction, grid_width, grid_height, wrap);
 
         try self.body.insert(self.allocator, 0, new_head);
 

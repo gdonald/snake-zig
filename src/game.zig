@@ -120,7 +120,7 @@ pub const Game = struct {
             self.queued_direction = null;
         }
 
-        try self.snake_instance.move(self.grid_width, self.grid_height);
+        try self.snake_instance.move(self.grid_width, self.grid_height, !config.USE_WALLS);
 
         const head = self.snake_instance.body.items[0];
 
