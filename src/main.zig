@@ -17,6 +17,7 @@ fn ignoredLogFn(comptime _: std.log.Level, comptime _: @Type(.enum_literal), com
 
 const grid_vertical_padding: u16 = 5; // top/bottom border + UI rows
 const grid_horizontal_padding: u16 = 2; // left/right border
+const space_seg = vaxis.Segment{ .text = " " };
 
 fn calculateGridSize(ws: vaxis.Winsize) struct { width: u32, height: u32 } {
     const height = if (ws.rows > grid_vertical_padding) ws.rows - grid_vertical_padding else 1;
@@ -25,6 +26,13 @@ fn calculateGridSize(ws: vaxis.Winsize) struct { width: u32, height: u32 } {
         .width = @as(u32, @intCast(width)),
         .height = @as(u32, @intCast(height)),
     };
+}
+
+fn clearRow(win: vaxis.Window, row: u16, width: u16) void {
+    var i: u16 = 0;
+    while (i < width) : (i += 1) {
+        _ = win.printSegment(space_seg, .{ .col_offset = i, .row_offset = row });
+    }
 }
 
 pub fn main() !void {
@@ -196,7 +204,12 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
         }
     }
 
-    var score_buf: [100]u8 = undefined;
+    // Clear UI rows to avoid stale characters when text shrinks.
+    const ui_width = grid_width + 2;
+    clearRow(win, border_offset_y + grid_height + 3, ui_width);
+    clearRow(win, border_offset_y + grid_height + 4, ui_width);
+
+    var score_buf: [32]u8 = undefined;
     const score_text = try std.fmt.bufPrint(&score_buf, "Score: {d}", .{game_instance.score});
     const score_color: [3]u8 = if (game_instance.food_collected_flash > 0)
         [_]u8{ 255, 255, 0 }
@@ -208,7 +221,7 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
     };
     _ = win.printSegment(score_seg, .{ .col_offset = border_offset_x, .row_offset = border_offset_y + grid_height + 3 });
 
-    var speed_buf: [100]u8 = undefined;
+    var speed_buf: [32]u8 = undefined;
     const speed = game_instance.getCurrentSpeed();
     const speed_text = try std.fmt.bufPrint(&speed_buf, "Speed: {d}", .{speed});
     const speed_seg = vaxis.Segment{
@@ -217,7 +230,7 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
     };
     _ = win.printSegment(speed_seg, .{ .col_offset = border_offset_x + 15, .row_offset = border_offset_y + grid_height + 3 });
 
-    var high_score_buf: [100]u8 = undefined;
+    var high_score_buf: [32]u8 = undefined;
     const high_score_text = try std.fmt.bufPrint(&high_score_buf, "High Score: {d}", .{game_instance.high_score});
     const high_score_seg = vaxis.Segment{
         .text = high_score_text,
@@ -235,11 +248,12 @@ fn renderGame(win: vaxis.Window, game_instance: *game.Game) !void {
     if (game_instance.state == .Countdown) {
         if (game_instance.getCountdownValue()) |countdown| {
             const overlay_y: u16 = border_offset_y + grid_height / 2;
-            var countdown_buf: [20]u8 = undefined;
-            const countdown_text = if (countdown > 0)
-                try std.fmt.bufPrint(&countdown_buf, "{d}", .{countdown})
-            else
-                "GO!";
+            const countdown_text = switch (countdown) {
+                3 => "3",
+                2 => "2",
+                1 => "1",
+                else => "GO",
+            };
             const countdown_col: u16 = border_offset_x + (grid_width / 2) -| @as(u16, @intCast(countdown_text.len / 2));
             const countdown_seg = vaxis.Segment{
                 .text = countdown_text,

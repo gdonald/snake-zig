@@ -11,28 +11,28 @@ pub const Position = struct {
                 if (wrap) {
                     new_pos.y = (self.y + grid_height - 1) % grid_height;
                 } else {
-                    new_pos.y = if (self.y == 0) std.math.maxInt(u32) else self.y - 1;
+                    new_pos.y = if (self.y == 0) grid_height else self.y - 1;
                 }
             },
             .Down => {
                 if (wrap) {
                     new_pos.y = (self.y + 1) % grid_height;
                 } else {
-                    new_pos.y = self.y + 1;
+                    new_pos.y = if (self.y + 1 >= grid_height) grid_height else self.y + 1;
                 }
             },
             .Left => {
                 if (wrap) {
                     new_pos.x = (self.x + grid_width - 1) % grid_width;
                 } else {
-                    new_pos.x = if (self.x == 0) std.math.maxInt(u32) else self.x - 1;
+                    new_pos.x = if (self.x == 0) grid_width else self.x - 1;
                 }
             },
             .Right => {
                 if (wrap) {
                     new_pos.x = (self.x + 1) % grid_width;
                 } else {
-                    new_pos.x = self.x + 1;
+                    new_pos.x = if (self.x + 1 >= grid_width) grid_width else self.x + 1;
                 }
             },
         }

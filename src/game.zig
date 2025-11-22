@@ -173,8 +173,8 @@ pub const Game = struct {
 
     pub fn getCountdownValue(self: *Game) ?u8 {
         if (self.state != .Countdown) return null;
-        const value = (self.countdown_ticks / 10) + 1;
-        return if (value <= 3) value else null;
+        // Clamp to 3 so we always render a visible countdown (avoiding stray glyphs when value would be 4).
+        return std.math.clamp((self.countdown_ticks / 10) + 1, 1, 3);
     }
 
     pub fn spawnFood(self: *Game) !void {
